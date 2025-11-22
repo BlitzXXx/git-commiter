@@ -1,0 +1,261 @@
+# SentimentEdge - Git Ignore Rules
+
+# ============================================
+# Secrets & Environment
+# ============================================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+credentials.json
+
+# ============================================
+# Python
+# ============================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ============================================
+# Node.js / Frontend
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================================
+# Docker
+# ============================================
+# Don't ignore docker-compose.yml, but ignore override
+docker-compose.override.yml
+
+# Data volumes (mounted from host)
+data/
+volumes/
+postgres_data/
+redis_data/
+grafana_data/
+prometheus_data/
+
+# ============================================
+# Machine Learning Models
+# ============================================
+# Downloaded models (too large for git)
+services/sentiment/models/
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.bin
+# Exception: keep small model configs
+!services/sentiment/models/.gitkeep
+
+# Huggingface cache
+.cache/
+transformers_cache/
+
+# ============================================
+# Data Files
+# ============================================
+# CSV, JSON data dumps
+*.csv
+*.parquet
+*.pkl
+*.pickle
+data/
+datasets/
+
+# Exception: keep example/seed data
+!database/seeds/*.sql
+!tests/fixtures/*.json
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+log/
+
+# ============================================
+# Database
+# ============================================
+# SQLite databases (if used for testing)
+*.db
+*.sqlite
+*.sqlite3
+
+# Database dumps
+*.dump
+*.sql.gz
+
+# ============================================
+# OS Files
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# Linux
+*~
+
+# ============================================
+# IDEs
+# ============================================
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Spyder
+.spyderproject
+.spyproject
+
+# ============================================
+# Monitoring & Metrics
+# ============================================
+# Prometheus data
+monitoring/prometheus/data/
+
+# Grafana data
+monitoring/grafana/data/
+
+# ============================================
+# Temporary Files
+# ============================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~.nib
+
+# ============================================
+# Testing
+# ============================================
+.tox/
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+
+# ============================================
+# Documentation Build
+# ============================================
+docs/_build/
+docs/.doctrees/
+site/
+
+# ============================================
+# Misc
+# ============================================
+.env.backup
+TODO.md
+NOTES.md
+scratch/
