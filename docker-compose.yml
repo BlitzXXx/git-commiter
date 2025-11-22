@@ -1,0 +1,286 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Database: TimescaleDB (PostgreSQL with time-series extension)
+  # ============================================
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: sentimentedge-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sentimentedge}
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001_init.sql
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trader} -d ${POSTGRES_DB:-sentimentedge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Cache & Message Queue: Redis
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: sentimentedge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Ingestion Service (Reddit, News, Market Data)
+  # ============================================
+  ingestion:
+    build:
+      context: ./services/ingestion
+      dockerfile: Dockerfile
+    container_name: sentimentedge-ingestion
+    environment:
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Reddit API
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-SentimentEdge/1.0}
+
+      # News API
+      NEWS_API_KEY: ${NEWS_API_KEY}
+
+      # Alpaca Market Data
+      ALPACA_API_KEY: ${ALPACA_API_KEY}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
+      ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Sentiment Analysis Service (FinBERT)
+  # ============================================
+  sentiment:
+    build:
+      context: ./services/sentiment
+      dockerfile: Dockerfile
+    container_name: sentimentedge-sentiment
+    environment:
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # PostgreSQL (for ticker mapping)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-sentimentedge}
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+
+      # Model configuration
+      MODEL_NAME: ${SENTIMENT_MODEL:-ProsusAI/finbert}
+      BATCH_SIZE: ${SENTIMENT_BATCH_SIZE:-20}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ============================================
+  # Trading Service (Signal Generation + Execution)
+  # ============================================
+  trader:
+    build:
+      context: ./services/trader
+      dockerfile: Dockerfile
+    container_name: sentimentedge-trader
+    environment:
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-sentimentedge}
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+
+      # Alpaca Trading API
+      ALPACA_API_KEY: ${ALPACA_API_KEY}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
+      ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+
+      # Trading mode
+      TRADING_MODE: ${TRADING_MODE:-paper}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/trader/config.yaml:/app/config.yaml
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # API Gateway (FastAPI + WebSocket)
+  # ============================================
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: sentimentedge-api
+    environment:
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-sentimentedge}
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Frontend Dashboard (React)
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sentimentedge-frontend
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+      REACT_APP_WS_URL: ${REACT_APP_WS_URL:-ws://localhost:8000/ws/live}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Monitoring: Prometheus
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sentimentedge-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+  # ============================================
+  # Monitoring: Grafana
+  # ============================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sentimentedge-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_INSTALL_PLUGINS: ''
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - sentimentedge-network
+    restart: unless-stopped
+
+# ============================================
+# Named Volumes for Data Persistence
+# ============================================
+volumes:
+  postgres_data:
+    name: sentimentedge-postgres-data
+  redis_data:
+    name: sentimentedge-redis-data
+  prometheus_data:
+    name: sentimentedge-prometheus-data
+  grafana_data:
+    name: sentimentedge-grafana-data
+
+# ============================================
+# Network
+# ============================================
+networks:
+  sentimentedge-network:
+    name: sentimentedge-network
+    driver: bridge

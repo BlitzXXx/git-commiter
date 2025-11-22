@@ -1,0 +1,55 @@
+# SentimentEdge Trading Strategy Configuration
+
+strategy:
+  # Signal generation thresholds
+  sentiment_threshold: 0.7        # Min sentiment score for BUY (0-1)
+  min_mentions: 15                # Min posts required in time window
+  volume_multiplier: 1.5          # Market volume vs average for confirmation
+
+  # Exit conditions
+  take_profit_pct: 0.03          # Take profit at +3%
+  stop_loss_pct: 0.02            # Stop loss at -2%
+  max_hold_seconds: 3600         # Max holding time (1 hour)
+
+  # Time windows for aggregation
+  aggregation_windows:
+    - 1min
+    - 5min
+    - 15min
+
+  # Primary window for signal generation
+  primary_window: 5min
+
+risk:
+  # Position limits
+  max_positions: 5                # Max concurrent positions
+  position_size_pct: 0.10         # 10% of capital per position
+  max_sector_exposure_pct: 0.30   # 30% max in one sector
+
+  # Loss limits
+  max_daily_loss_pct: 0.05        # 5% daily loss = halt trading
+  max_trade_loss_pct: 0.02        # 2% max loss per trade
+
+  # Kill switch
+  enable_kill_switch: true
+  kill_switch_threshold_pct: 0.05
+
+execution:
+  # Order types
+  default_order_type: market      # 'market' or 'limit'
+  limit_offset_pct: 0.001         # 0.1% offset for limit orders
+
+  # Retry logic
+  max_retries: 3
+  retry_delay_seconds: 2
+
+  # Bracket orders
+  use_bracket_orders: true        # Auto stop-loss + take-profit
+
+monitoring:
+  # Logging
+  log_all_signals: true
+  log_rejected_signals: true
+
+  # Metrics
+  metrics_interval_seconds: 60
