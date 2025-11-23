@@ -207,14 +207,14 @@ services:
   # ============================================
   frontend:
     build:
-      context: ./frontend
+      context: ./services/frontend
       dockerfile: Dockerfile
     container_name: sentimentedge-frontend
     environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
-      REACT_APP_WS_URL: ${REACT_APP_WS_URL:-ws://localhost:8000/ws/live}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000/ws/live}
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - api
     networks:

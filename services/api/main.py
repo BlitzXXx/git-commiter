@@ -129,16 +129,16 @@ async def get_positions():
             )
 
             positions = []
-            for row in result:
+            for idx, row in enumerate(result):
                 positions.append({
+                    "id": idx + 1,  # Generate sequential ID for frontend
                     "ticker": row[0],
                     "quantity": int(row[1]),
-                    "avg_entry_price": float(row[2]),
+                    "entry_price": float(row[2]),  # Frontend expects entry_price
                     "current_price": float(row[3]) if row[3] else 0.0,
                     "unrealized_pnl": float(row[4]) if row[4] else 0.0,
                     "unrealized_pnl_pct": ((float(row[3]) - float(row[2])) / float(row[2]) * 100) if row[3] and row[2] else 0.0,
-                    "entry_timestamp": row[5].isoformat() if row[5] else None,
-                    "last_updated": row[6].isoformat() if row[6] else None
+                    "opened_at": row[5].isoformat() if row[5] else None,  # Frontend expects opened_at
                 })
 
             return {"positions": positions, "count": len(positions)}
@@ -157,7 +157,7 @@ async def get_trades(limit: int = Query(50, ge=1, le=500), ticker: Optional[str]
                 result = conn.execute(
                     text("""
                         SELECT id, timestamp, ticker, action, quantity, price,
-                               total_value, signal_reason, sentiment_score
+                               total_value, signal_reason, sentiment_score, realized_pnl, position_id
                         FROM trades
                         WHERE ticker = :ticker
                         ORDER BY timestamp DESC
@@ -169,7 +169,7 @@ async def get_trades(limit: int = Query(50, ge=1, le=500), ticker: Optional[str]
                 result = conn.execute(
                     text("""
                         SELECT id, timestamp, ticker, action, quantity, price,
-                               total_value, signal_reason, sentiment_score
+                               total_value, signal_reason, sentiment_score, realized_pnl, position_id
                         FROM trades
                         ORDER BY timestamp DESC
                         LIMIT :limit
@@ -183,12 +183,14 @@ async def get_trades(limit: int = Query(50, ge=1, le=500), ticker: Optional[str]
                     "id": row[0],
                     "timestamp": row[1].isoformat() if row[1] else None,
                     "ticker": row[2],
-                    "action": row[3],
+                    "signal_type": row[3],  # Frontend expects signal_type not action
                     "quantity": int(row[4]),
                     "price": float(row[5]),
                     "total_value": float(row[6]),
                     "signal_reason": row[7],
-                    "sentiment_score": float(row[8]) if row[8] else None
+                    "sentiment_score": float(row[8]) if row[8] else None,
+                    "realized_pnl": float(row[9]) if row[9] is not None else None,
+                    "position_id": int(row[10]) if row[10] is not None else None
                 })
 
             return {"trades": trades, "count": len(trades)}

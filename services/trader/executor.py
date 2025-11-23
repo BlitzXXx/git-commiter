@@ -166,7 +166,7 @@ class OrderExecutor:
                     entry_price = float(position.avg_entry_price)
                     pnl = (sell_price - entry_price) * quantity
 
-                    # Store trade
+                    # Store trade with realized P&L
                     self._store_trade(
                         ticker=signal.ticker,
                         action='SELL',
@@ -174,7 +174,8 @@ class OrderExecutor:
                         price=sell_price,
                         order_id=str(order.id),
                         signal_reason=signal.reason,
-                        sentiment_score=signal.confidence
+                        sentiment_score=signal.confidence,
+                        realized_pnl=pnl
                     )
 
                     # Remove position from database
@@ -240,7 +241,8 @@ class OrderExecutor:
         return None
 
     def _store_trade(self, ticker: str, action: str, quantity: int, price: float,
-                     order_id: str, signal_reason: str = None, sentiment_score: float = None):
+                     order_id: str, signal_reason: str = None, sentiment_score: float = None,
+                     realized_pnl: float = None, position_id: int = None):
         """Store executed trade in database.
 
         Args:
@@ -251,14 +253,16 @@ class OrderExecutor:
             order_id: Alpaca order ID
             signal_reason: Reason from signal
             sentiment_score: Sentiment score from signal
+            realized_pnl: Realized P&L (for SELL trades)
+            position_id: Position ID to link BUY and SELL trades
         """
         try:
             with self.db_engine.connect() as conn:
                 conn.execute(
                     text("""
                         INSERT INTO trades
-                        (timestamp, ticker, action, quantity, price, total_value, order_id, signal_reason, sentiment_score)
-                        VALUES (NOW(), :ticker, :action, :quantity, :price, :total_value, :order_id, :reason, :sentiment)
+                        (timestamp, ticker, action, quantity, price, total_value, order_id, signal_reason, sentiment_score, realized_pnl, position_id)
+                        VALUES (NOW(), :ticker, :action, :quantity, :price, :total_value, :order_id, :reason, :sentiment, :pnl, :pos_id)
                     """),
                     {
                         'ticker': ticker,
@@ -268,12 +272,15 @@ class OrderExecutor:
                         'total_value': quantity * price,
                         'order_id': order_id,
                         'reason': signal_reason,
-                        'sentiment': sentiment_score
+                        'sentiment': sentiment_score,
+                        'pnl': realized_pnl,
+                        'pos_id': position_id
                     }
                 )
                 conn.commit()
 
-            logger.debug(f"Stored trade: {action} {quantity} {ticker} @ ${price:.2f}")
+            pnl_str = f" (P&L: ${realized_pnl:.2f})" if realized_pnl is not None else ""
+            logger.debug(f"Stored trade: {action} {quantity} {ticker} @ ${price:.2f}{pnl_str}")
 
         except Exception as e:
             logger.error(f"Error storing trade: {e}", exc_info=True)
