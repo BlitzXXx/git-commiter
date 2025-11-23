@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Trading Service - Signal Generation and Aggregation
-Implements Phase 8: Signal generation engine
-Phase 9-10 (Risk management and Execution) are placeholders
+Trading Service - Complete Trading Pipeline
+Implements Phase 8: Signal generation
+Implements Phase 9: Risk management
+Implements Phase 10: Order execution
 """
 import os
 import json
@@ -11,8 +12,12 @@ import logging
 import threading
 import redis
 import yaml
+from datetime import datetime
 from aggregator import SentimentAggregator
 from signal_generator import SignalGenerator
+from risk_manager import RiskManager
+from executor import OrderExecutor
+from portfolio import Portfolio
 
 # Configure logging
 logging.basicConfig(
@@ -219,6 +224,154 @@ def run_signal_generator(redis_client, db_url, config):
         logger.error(f"Signal generator error: {e}", exc_info=True)
 
 
+def run_executor(redis_client, db_url, config):
+    """Run order executor in a loop.
+
+    Args:
+        redis_client: Redis client instance
+        db_url: Database connection URL
+        config: Strategy configuration
+    """
+    logger.info("Starting executor thread...")
+
+    # Get Alpaca credentials
+    alpaca_api_key = os.getenv("ALPACA_API_KEY")
+    alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")
+    trading_mode = os.getenv("TRADING_MODE", "paper")
+
+    if not alpaca_api_key or not alpaca_secret_key:
+        logger.error("❌ Alpaca API credentials not found - executor cannot start")
+        return
+
+    # Initialize components
+    risk_manager = RiskManager(db_url=db_url, config=config)
+    executor = OrderExecutor(
+        api_key=alpaca_api_key,
+        secret_key=alpaca_secret_key,
+        db_url=db_url,
+        paper=(trading_mode == "paper")
+    )
+    portfolio = Portfolio(
+        api_key=alpaca_api_key,
+        secret_key=alpaca_secret_key,
+        db_url=db_url,
+        paper=(trading_mode == "paper")
+    )
+
+    # Sync portfolio
+    portfolio.sync_with_alpaca()
+
+    last_id = "0"
+    signals_processed = 0
+    trades_executed = 0
+
+    try:
+        while True:
+            # Read from signals stream
+            try:
+                streams = redis_client.xread(
+                    {"signals": last_id},
+                    count=10,
+                    block=5000  # 5 second timeout
+                )
+
+                if not streams:
+                    # Update position prices periodically
+                    portfolio.update_position_prices()
+                    continue
+
+                # Process signals
+                for stream_name, messages in streams:
+                    for message_id, message_data in messages:
+                        try:
+                            # Parse signal
+                            signal_json = message_data.get(b"data")
+                            if not signal_json:
+                                continue
+
+                            signal_data = json.loads(signal_json.decode("utf-8"))
+
+                            # Reconstruct Signal object
+                            from signal_generator import Signal
+                            signal = Signal(
+                                timestamp=datetime.fromisoformat(signal_data['timestamp']),
+                                ticker=signal_data['ticker'],
+                                action=signal_data['action'],
+                                confidence=signal_data['confidence'],
+                                reason=signal_data['reason'],
+                                metadata=signal_data.get('metadata', {})
+                            )
+
+                            signals_processed += 1
+
+                            # Get portfolio state
+                            portfolio_state = risk_manager.get_portfolio_state()
+
+                            # Validate with risk manager
+                            is_valid, reason = risk_manager.validate_trade(signal, portfolio_state)
+
+                            if not is_valid:
+                                logger.info(f"❌ Signal rejected: {signal.action} {signal.ticker} - {reason}")
+                                last_id = message_id
+                                continue
+
+                            logger.info(f"✅ Signal approved: {signal.action} {signal.ticker}")
+
+                            # Execute trade
+                            if signal.action == 'BUY':
+                                # Calculate position size
+                                current_price = signal.metadata.get('price', 0.0)
+                                if not current_price:
+                                    logger.warning(f"No price in signal metadata for {signal.ticker}")
+                                    last_id = message_id
+                                    continue
+
+                                quantity = risk_manager.calculate_position_size(
+                                    signal,
+                                    portfolio_state,
+                                    current_price
+                                )
+
+                                result = executor.execute_signal(signal, quantity)
+
+                                if result:
+                                    trades_executed += 1
+                                    logger.info(
+                                        f"💰 EXECUTED: BUY {result['quantity']} {result['ticker']} "
+                                        f"@ ${result['price']:.2f}"
+                                    )
+
+                            elif signal.action == 'SELL':
+                                result = executor.execute_signal(signal, 0)  # Quantity determined from position
+
+                                if result:
+                                    trades_executed += 1
+                                    logger.info(
+                                        f"💰 EXECUTED: SELL {result['quantity']} {result['ticker']} "
+                                        f"@ ${result['price']:.2f} | P&L: ${result.get('pnl', 0):.2f}"
+                                    )
+
+                            last_id = message_id
+
+                        except Exception as e:
+                            logger.error(f"Error processing signal: {e}", exc_info=True)
+                            continue
+
+                # Log stats periodically
+                if signals_processed % 10 == 0 and signals_processed > 0:
+                    logger.info(
+                        f"📊 Executor stats: {signals_processed} signals processed, "
+                        f"{trades_executed} trades executed"
+                    )
+
+            except redis.exceptions.ResponseError as e:
+                logger.error(f"Redis error in executor: {e}")
+                time.sleep(5)
+
+    except Exception as e:
+        logger.error(f"Executor error: {e}", exc_info=True)
+
+
 def main():
     """Main entry point - starts aggregator and signal generator."""
     logger.info("=" * 60)
@@ -271,10 +424,21 @@ def main():
     signal_thread.start()
     logger.info("Started signal generator thread")
 
+    # Start executor thread
+    executor_thread = threading.Thread(
+        target=run_executor,
+        args=(redis_client, db_url, config),
+        name="Executor",
+        daemon=True
+    )
+    executor_thread.start()
+    logger.info("Started executor thread")
+
     logger.info("=" * 60)
     logger.info("✅ Trading service started successfully")
     logger.info("Phase 8: Signal generation ✅")
-    logger.info("Phase 9-10: Risk management & Execution (TODO)")
+    logger.info("Phase 9: Risk management ✅")
+    logger.info("Phase 10: Order execution ✅")
     logger.info("=" * 60)
 
     # Keep main thread alive
@@ -285,6 +449,8 @@ def main():
                 logger.error("❌ Aggregator thread died!")
             if not signal_thread.is_alive():
                 logger.error("❌ Signal generator thread died!")
+            if not executor_thread.is_alive():
+                logger.error("❌ Executor thread died!")
 
             time.sleep(60)
 

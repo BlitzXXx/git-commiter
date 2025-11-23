@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-900 text-gray-100;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.card {
+  @apply bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-700;
+}
+
+.stat-card {
+  @apply bg-gray-800 rounded-lg p-4 border border-gray-700;
+}
+
+.btn-primary {
+  @apply bg-primary text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors;
+}
+
+.badge-buy {
+  @apply bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold;
+}
+
+.badge-sell {
+  @apply bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold;
+}
+
+.positive {
+  @apply text-green-400;
+}
+
+.negative {
+  @apply text-red-400;
+}
+
+.neutral {
+  @apply text-gray-400;
+}
